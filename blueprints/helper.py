@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify
 from models import db, User, AdminActionLog
+from decimal import Decimal
 
 helper_bp = Blueprint('helper', __name__)
 
@@ -11,7 +12,7 @@ def list_users():
             'id': user.id,
             'username': user.username,
             'is_admin': user.is_admin,
-            'balance': user.balance
+            'balance': float(user.balance) if isinstance(user.balance, Decimal) else user.balance
         } for user in users
     ]
     return jsonify(user_list), 200

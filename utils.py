@@ -38,7 +38,7 @@ def get_user_from_token():
 
     return user, None, None
 
-def log_admin_action(admin_id: int, action_type: str, action_description: str, affected_user_id: int):
+def log_admin_action(admin_id: int | None, action_type: str, action_description: str, affected_user_id: int | None):
     log_entry = AdminActionLog(
         admin_id=admin_id,
         action_type=action_type,

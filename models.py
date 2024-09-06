@@ -53,14 +53,14 @@ class Transaction(db.Model):
 class AdminActionLog(db.Model):
     __tablename__ = 'AdminActionLog'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    admin_id = db.Column(db.Integer, db.ForeignKey('Users.id'), nullable=False)
+    admin_id = db.Column(db.Integer, db.ForeignKey('Users.id'), nullable=True)  # Change to nullable=True
     action_type = db.Column(db.String(50), nullable=False)
     action_description = db.Column(db.Text)
     affected_user_id = db.Column(db.Integer, db.ForeignKey('Users.id'))
     timestamp = db.Column(db.DateTime, server_default=func.now())
 
     admin = db.relationship("User", foreign_keys=[admin_id], back_populates="admin_actions")
-    affected_user = db.relationship("User", foreign_keys=[affected_user_id], back_populates="affected_by_admin_actions")
+    affected_user = db.relationship("User", foreign_keys=[affected_user_id])
 
     def to_dict(self):
         return {
