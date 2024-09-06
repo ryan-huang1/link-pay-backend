@@ -30,11 +30,13 @@ def create_app():
     from blueprints.user_bp import user_bp
     from blueprints.transaction_bp import transaction_bp
     from blueprints.admin_bp import admin_bp
+    from blueprints.helper import helper_bp
 
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(user_bp, url_prefix='/user')
     app.register_blueprint(transaction_bp, url_prefix='/transaction')
     app.register_blueprint(admin_bp, url_prefix='/admin')
+    app.register_blueprint(helper_bp, url_prefix='/helper')  # Add this line
 
     return app
 

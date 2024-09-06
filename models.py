@@ -1,11 +1,11 @@
 from database import db
 from sqlalchemy.sql import func
+from decimal import Decimal
 
 class User(db.Model):
     __tablename__ = 'Users'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
-    email = db.Column(db.String(100), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     balance = db.Column(db.Numeric(10, 2), nullable=False, default=1000.00)
     is_admin = db.Column(db.Boolean, nullable=False, default=False)
@@ -14,18 +14,19 @@ class User(db.Model):
 
     sent_transactions = db.relationship("Transaction", foreign_keys="Transaction.sender_id", back_populates="sender")
     received_transactions = db.relationship("Transaction", foreign_keys="Transaction.recipient_id", back_populates="recipient")
-    admin_actions = db.relationship("AdminActionLog", back_populates="admin")
+    admin_actions = db.relationship("AdminActionLog", back_populates="admin", foreign_keys="AdminActionLog.admin_id")
+    affected_by_admin_actions = db.relationship("AdminActionLog", back_populates="affected_user", foreign_keys="AdminActionLog.affected_user_id")
 
     def to_dict(self):
         return {
             'id': self.id,
             'username': self.username,
-            'email': self.email,
-            'balance': float(self.balance),
+            'balance': float(self.balance) if isinstance(self.balance, Decimal) else self.balance,
             'is_admin': self.is_admin,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
+
 
 class Transaction(db.Model):
     __tablename__ = 'Transactions'
@@ -59,7 +60,7 @@ class AdminActionLog(db.Model):
     timestamp = db.Column(db.DateTime, server_default=func.now())
 
     admin = db.relationship("User", foreign_keys=[admin_id], back_populates="admin_actions")
-    affected_user = db.relationship("User", foreign_keys=[affected_user_id])
+    affected_user = db.relationship("User", foreign_keys=[affected_user_id], back_populates="affected_by_admin_actions")
 
     def to_dict(self):
         return {
