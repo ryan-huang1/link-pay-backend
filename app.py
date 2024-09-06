@@ -1,10 +1,14 @@
 from flask import Flask
+from flask_cors import CORS
 from blueprints.auth_bp import auth_bp
 from blueprints.user_bp import user_bp
 from blueprints.transaction_bp import transaction_bp
 from blueprints.admin_bp import admin_bp
 
 app = Flask(__name__)
+
+# Enable CORS for all routes
+CORS(app)
 
 # Register blueprints
 app.register_blueprint(auth_bp, url_prefix='/auth')
