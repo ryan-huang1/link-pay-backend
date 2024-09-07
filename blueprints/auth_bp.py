@@ -15,6 +15,13 @@ def register():
     if not all([username, password]):
         return jsonify({'error': 'Missing required fields'}), 400
 
+    existing_user = User.query.filter_by(username=username).first()
+    if existing_user:
+        if existing_user.is_deleted:
+            return jsonify({'error': 'This username belongs to a deleted account and cannot be reused'}), 400
+        else:
+            return jsonify({'error': 'Username already exists'}), 400
+
     try:
         new_user = User(
             username=username,
@@ -34,17 +41,10 @@ def register():
         )
         
         return jsonify({'message': 'User registered successfully', 'user_id': new_user.id}), 201
-    except IntegrityError as e:
-        db.session.rollback()
-        print(f"IntegrityError: {str(e)}")
-        if "username" in str(e).lower():
-            return jsonify({'error': 'Username already exists'}), 400
-        else:
-            return jsonify({'error': 'An integrity error occurred'}), 400
     except Exception as e:
         db.session.rollback()
-        print(f"Exception: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        current_app.logger.error(f"Error registering user: {str(e)}")
+        return jsonify({'error': 'An error occurred while registering the user'}), 500
 
 @auth_bp.route('/login', methods=['POST'])
 def login():

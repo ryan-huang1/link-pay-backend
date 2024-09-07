@@ -9,6 +9,7 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     balance = db.Column(db.Numeric(10, 2), nullable=False, default=1000.00)
     is_admin = db.Column(db.Boolean, nullable=False, default=False)
+    is_deleted = db.Column(db.Boolean, nullable=False, default=False)  # New column
     created_at = db.Column(db.DateTime, server_default=func.now())
     updated_at = db.Column(db.DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -23,10 +24,10 @@ class User(db.Model):
             'username': self.username,
             'balance': float(self.balance) if isinstance(self.balance, Decimal) else self.balance,
             'is_admin': self.is_admin,
+            'is_deleted': self.is_deleted,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
-
 
 class Transaction(db.Model):
     __tablename__ = 'Transactions'
