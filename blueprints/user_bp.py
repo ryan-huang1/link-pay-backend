@@ -23,7 +23,7 @@ def get_all_usernames():
     if error_message:
         return jsonify({'error': error_message}), status_code
 
-    usernames = [user.username for user in User.query.all()]
+    usernames = [user.username for user in User.query.filter_by(is_admin=False).all()]
     return jsonify({'usernames': usernames}), 200
 
 @user_bp.route('/users/<string:username>/balance', methods=['GET'])
