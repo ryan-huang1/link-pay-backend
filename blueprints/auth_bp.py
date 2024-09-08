@@ -32,6 +32,9 @@ def register():
         db.session.add(new_user)
         db.session.commit()
         
+        # Generate JWT token for the new user
+        token = generate_jwt_token(new_user.id, new_user.is_admin)
+        
         # Log the user registration action
         log_admin_action(
             admin_id=None,  # No admin for self-registration
@@ -40,7 +43,12 @@ def register():
             affected_user_id=new_user.id
         )
         
-        return jsonify({'message': 'User registered successfully', 'user_id': new_user.id}), 201
+        return jsonify({
+            'message': 'User registered successfully',
+            'user_id': new_user.id,
+            'token': token,
+            'is_admin': new_user.is_admin
+        }), 201
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error registering user: {str(e)}")
@@ -58,6 +66,16 @@ def login():
     user = User.query.filter_by(username=username).first()
 
     if user:
+        if user.is_deleted:
+            # Log failed login attempt for deleted user
+            log_admin_action(
+                admin_id=None,
+                action_type="FAILED_LOGIN",
+                action_description=f"Failed login attempt for deleted user: {username}",
+                affected_user_id=user.id
+            )
+            return jsonify({'error': 'Invalid username or password'}), 401
+
         if verify_password(user.password_hash, password):
             token = generate_jwt_token(user.id, user.is_admin)
             
