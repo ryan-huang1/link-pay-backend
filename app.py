@@ -9,7 +9,7 @@ load_dotenv()
 
 def create_app():
     app = Flask(__name__)
-    CORS(app)
+    CORS(app, resources={r"/*": {"origins": "*"}})  # Allow CORS for all routes
 
     app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY')
     db_url = os.environ.get('DB_URL')
