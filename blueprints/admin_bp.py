@@ -110,7 +110,14 @@ def all_transaction_history(admin):
 def admin_action_logs(admin):
     logs = AdminActionLog.query.all()
     return jsonify({
-        'logs': [log.to_dict() for log in logs]
+        'logs': [{
+            'id': log.id,
+            'admin_username': User.query.get(log.admin_id).username if log.admin_id else None,
+            'action_type': log.action_type,
+            'action_description': log.action_description,
+            'affected_username': User.query.get(log.affected_user_id).username if log.affected_user_id else None,
+            'timestamp': log.timestamp.isoformat() if log.timestamp else None
+        } for log in logs]
     }), 200
 
 @admin_bp.route('/admin/create', methods=['POST'])
