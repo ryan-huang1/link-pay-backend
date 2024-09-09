@@ -3,6 +3,7 @@ Flask-Cors
 Flask-SQLAlchemy
 SQLAlchemy
 python-dotenv
+PyMySQL
 PyJWT
 psycopg2-binary
 gunicorn
