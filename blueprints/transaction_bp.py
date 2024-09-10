@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request, current_app
 from models import db, User, Transaction
 from utils import get_user_from_token
 from sqlalchemy.exc import IntegrityError
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import logging
 
 transaction_bp = Blueprint('transaction', __name__)
@@ -18,7 +18,7 @@ def create_transaction():
     amount = data.get('amount')
     description = data.get('description')
 
-    if not all([recipient_username, amount, description]):
+    if recipient_username is None or amount is None or description is None:
         return jsonify({'error': 'Missing required fields'}), 400
 
     recipient = User.query.filter_by(username=recipient_username).first()
@@ -28,9 +28,13 @@ def create_transaction():
     if sender.username == recipient.username:
         return jsonify({'error': 'Cannot send money to yourself'}), 400
 
-    amount = Decimal(str(amount))
-    if amount <= 0:
-        return jsonify({'error': 'Amount must be positive'}), 400
+    try:
+        amount = Decimal(str(amount))
+    except InvalidOperation:
+        return jsonify({'error': 'Invalid amount format'}), 400
+
+    if amount < Decimal('0.01'):
+        return jsonify({'error': 'Amount must be at least $0.01'}), 400
 
     if sender.balance < amount:
         return jsonify({'error': 'Insufficient funds'}), 400
