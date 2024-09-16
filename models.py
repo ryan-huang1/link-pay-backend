@@ -72,3 +72,24 @@ class AdminActionLog(db.Model):
             'affected_user_id': self.affected_user_id,
             'timestamp': self.timestamp.isoformat() if self.timestamp else None
         }
+    
+class RegistrationCode(db.Model):
+    __tablename__ = 'RegistrationCodes'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    code = db.Column(db.String(50), unique=True, nullable=False)
+    is_used = db.Column(db.Boolean, default=False, nullable=False)
+    used_by = db.Column(db.Integer, db.ForeignKey('Users.id'), nullable=True)
+    created_at = db.Column(db.DateTime, server_default=func.now())
+    used_at = db.Column(db.DateTime, nullable=True)
+
+    user = db.relationship("User", foreign_keys=[used_by])
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'code': self.code,
+            'is_used': self.is_used,
+            'used_by': self.used_by,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'used_at': self.used_at.isoformat() if self.used_at else None
+        }
