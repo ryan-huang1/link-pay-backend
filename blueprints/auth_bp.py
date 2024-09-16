@@ -133,6 +133,65 @@ def delete_all_codes():
         current_app.logger.error(f"Error deleting registration codes: {str(e)}")
         return jsonify({'error': 'An error occurred while deleting registration codes'}), 500
     
+@auth_bp.route('/register', methods=['POST'])
+def register():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+    registration_code = data.get('registration_code')
+
+    if not all([username, password, registration_code]):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    existing_user = User.query.filter_by(username=username).first()
+    if existing_user:
+        if existing_user.is_deleted:
+            return jsonify({'error': 'This username belongs to a deleted account and cannot be reused'}), 400
+        else:
+            return jsonify({'error': 'Username already exists'}), 400
+
+    # Check if the registration code is valid
+    code = RegistrationCode.query.filter_by(code=registration_code, is_used=False).first()
+    if not code:
+        return jsonify({'error': 'Invalid or already used registration code'}), 400
+
+    try:
+        new_user = User(
+            username=username,
+            password_hash=hash_password(password),
+            balance=1000.0,  # Initial balance
+            is_admin=False
+        )
+        db.session.add(new_user)
+
+        # Mark the registration code as used
+        code.is_used = True
+        code.used_by = new_user.id
+
+        db.session.commit()
+        
+        # Generate JWT token for the new user
+        token = generate_jwt_token(new_user.id, new_user.is_admin)
+        
+        # Log the user registration action
+        log_admin_action(
+            admin_id=None,  # No admin for self-registration
+            action_type="USER_REGISTRATION",
+            action_description=f"New user registered: {username}",
+            affected_user_id=new_user.id
+        )
+        
+        return jsonify({
+            'message': 'User registered successfully',
+            'user_id': new_user.id,
+            'token': token,
+            'is_admin': new_user.is_admin
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error registering user: {str(e)}")
+        return jsonify({'error': 'An error occurred while registering the user'}), 500
+
 @auth_bp.route('/login', methods=['POST'])
 def login():
     data = request.json
