@@ -4,20 +4,131 @@ from utils import hash_password, verify_password, generate_jwt_token, get_user_f
 from sqlalchemy.exc import IntegrityError
 from decimal import Decimal
 import secrets
-from random_word import RandomWords
+import random
+import time
+import json
+import os
+import logging
 
 auth_bp = Blueprint('auth', __name__)
 
-r = RandomWords()
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Load word list from JSON file
+script_dir = os.path.dirname(os.path.abspath(__file__))
+json_path = os.path.join(script_dir, 'word_list.json')
+
+try:
+    with open(json_path, 'r') as f:
+        WORD_POOL = json.load(f)
+    logger.info(f"Loaded {len(WORD_POOL)} words from word_list.json")
+except FileNotFoundError:
+    logger.error("word_list.json not found. Please run generate_word_list.py first.")
+    WORD_POOL = ["error", "file", "missing"]  # Fallback to a simple list in case of error
+
+# Ensure we have at least 3 words
+if len(WORD_POOL) < 3:
+    logger.error(f"Not enough words in the word list. Found only {len(WORD_POOL)} words.")
+    WORD_POOL.extend(["not", "enough", "words"])
+
+WORD_POOL = list(set(WORD_POOL))  # Ensure uniqueness
+logger.info(f"Word pool contains {len(WORD_POOL)} unique words.")
 
 def generate_word_code():
-    words = []
-    while len(words) < 3:
-        word = r.get_random_word()
-        if word and 3 <= len(word) <= 8:
-            words.append(word.lower())
-    return "-".join(words)
+    return "-".join(random.sample(WORD_POOL, 3))
 
+def generate_unique_codes(num_codes, existing_codes):
+    codes = set()
+    max_attempts = num_codes * 10  # Limit the number of attempts to avoid infinite loop
+    attempts = 0
+    while len(codes) < num_codes and attempts < max_attempts:
+        new_code = generate_word_code()
+        if new_code not in existing_codes and new_code not in codes:
+            codes.add(new_code)
+        attempts += 1
+    
+    if len(codes) < num_codes:
+        logger.warning(f"Could only generate {len(codes)} unique codes out of {num_codes} requested.")
+    
+    return list(codes)
+
+@auth_bp.route('/generate-registration-code', methods=['POST'])
+def generate_registration_code():
+    start_time = time.time()
+    
+    admin_user, error_message, status_code = get_user_from_token()
+    if error_message:
+        return jsonify({'error': error_message}), status_code
+
+    if not admin_user.is_admin:
+        return jsonify({'error': 'Access denied. Admin privileges required.'}), 403
+
+    data = request.json
+    num_codes = data.get('num_codes', 1)  # Default to 1 if not specified
+
+    try:
+        num_codes = int(num_codes)
+        if num_codes < 1:
+            return jsonify({'error': 'Number of codes must be at least 1'}), 400
+    except ValueError:
+        return jsonify({'error': 'Invalid number of codes'}), 400
+
+    auth_time = time.time() - start_time
+    logger.info(f"Time for authentication and validation: {auth_time:.4f} seconds")
+
+    try:
+        # Fetch existing codes
+        fetch_start = time.time()
+        existing_codes = set(code[0] for code in RegistrationCode.query.with_entities(RegistrationCode.code).all())
+        fetch_time = time.time() - fetch_start
+        logger.info(f"Time for fetching existing codes: {fetch_time:.4f} seconds")
+
+        # Generate unique codes
+        generation_start = time.time()
+        generated_codes = generate_unique_codes(num_codes, existing_codes)
+        generation_time = time.time() - generation_start
+        logger.info(f"Time for code generation: {generation_time:.4f} seconds")
+
+        # Bulk insert
+        insert_start = time.time()
+        new_codes = [RegistrationCode(code=code) for code in generated_codes]
+        db.session.bulk_save_objects(new_codes)
+        db.session.commit()
+        insert_time = time.time() - insert_start
+        logger.info(f"Time for bulk insert: {insert_time:.4f} seconds")
+
+        log_start = time.time()
+        log_admin_action(
+            admin_id=admin_user.id,
+            action_type="GENERATE_REGISTRATION_CODE",
+            action_description=f"Generated {len(generated_codes)} new word-based registration code(s)",
+            affected_user_id=None
+        )
+        log_time = time.time() - log_start
+        logger.info(f"Time for logging admin action: {log_time:.4f} seconds")
+
+        total_time = time.time() - start_time
+        logger.info(f"Total time for request: {total_time:.4f} seconds")
+
+        return jsonify({
+            'message': f'{len(generated_codes)} registration code(s) generated successfully',
+            'codes': generated_codes,
+            'timing': {
+                'authentication': auth_time,
+                'fetching_existing_codes': fetch_time,
+                'code_generation': generation_time,
+                'bulk_insert': insert_time,
+                'admin_log': log_time,
+                'total': total_time
+            }
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error generating registration code: {str(e)}", exc_info=True)
+        return jsonify({'error': 'An error occurred while generating the registration code(s)'}), 500
+    
 @auth_bp.route('/get-valid-codes', methods=['GET'])
 def get_valid_codes():
     admin_user, error_message, status_code = get_user_from_token()
@@ -49,55 +160,6 @@ def get_valid_codes():
         'valid_codes': codes_list,
         'count': len(codes_list)
     }), 200
-
-@auth_bp.route('/generate-registration-code', methods=['POST'])
-def generate_registration_code():
-    admin_user, error_message, status_code = get_user_from_token()
-    if error_message:
-        return jsonify({'error': error_message}), status_code
-
-    if not admin_user.is_admin:
-        return jsonify({'error': 'Access denied. Admin privileges required.'}), 403
-
-    data = request.json
-    num_codes = data.get('num_codes', 1)  # Default to 1 if not specified
-
-    try:
-        num_codes = int(num_codes)
-        if num_codes < 1:
-            return jsonify({'error': 'Number of codes must be at least 1'}), 400
-    except ValueError:
-        return jsonify({'error': 'Invalid number of codes'}), 400
-
-    generated_codes = []
-    
-    try:
-        for _ in range(num_codes):
-            code = generate_word_code()
-            while RegistrationCode.query.filter_by(code=code).first():
-                # Regenerate if code already exists
-                code = generate_word_code()
-            new_code = RegistrationCode(code=code)
-            db.session.add(new_code)
-            generated_codes.append(code)
-        
-        db.session.commit()
-
-        log_admin_action(
-            admin_id=admin_user.id,
-            action_type="GENERATE_REGISTRATION_CODE",
-            action_description=f"Generated {num_codes} new word-based registration code(s)",
-            affected_user_id=None
-        )
-
-        return jsonify({
-            'message': f'{num_codes} registration code(s) generated successfully',
-            'codes': generated_codes
-        }), 201
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error generating registration code: {str(e)}")
-        return jsonify({'error': 'An error occurred while generating the registration code(s)'}), 500
 
 @auth_bp.route('/delete-all-codes', methods=['DELETE'])
 def delete_all_codes():

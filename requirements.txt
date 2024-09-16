@@ -8,3 +8,4 @@ PyJWT
 psycopg2-binary
 gunicorn
 random-word
+tqdm
