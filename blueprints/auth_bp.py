@@ -253,7 +253,7 @@ def register():
         db.session.rollback()
         current_app.logger.error(f"Error registering user: {str(e)}")
         return jsonify({'error': 'An error occurred while registering the user'}), 500
-
+    
 @auth_bp.route('/login', methods=['POST'])
 def login():
     data = request.json
@@ -267,7 +267,6 @@ def login():
 
     if user:
         if user.is_deleted:
-            # Log failed login attempt for deleted user
             log_admin_action(
                 admin_id=None,
                 action_type="FAILED_LOGIN",
@@ -279,7 +278,6 @@ def login():
         if verify_password(user.password_hash, password):
             token = generate_jwt_token(user.id, user.is_admin)
             
-            # Log successful login
             log_admin_action(
                 admin_id=None,
                 action_type="USER_LOGIN",
@@ -290,10 +288,10 @@ def login():
             return jsonify({
                 'token': token,
                 'user_id': user.id,
-                'is_admin': user.is_admin
+                'is_admin': user.is_admin,
+                'is_business': user.is_business  # Added this line
             }), 200
         else:
-            # Log failed login attempt with affected user id
             log_admin_action(
                 admin_id=None,
                 action_type="FAILED_LOGIN",
@@ -301,7 +299,6 @@ def login():
                 affected_user_id=user.id
             )
     else:
-        # Log failed login attempt for non-existent user
         log_admin_action(
             admin_id=None,
             action_type="FAILED_LOGIN",
