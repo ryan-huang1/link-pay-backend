@@ -17,6 +17,7 @@ def create_transaction():
     recipient_username = data.get('recipient_username')
     amount = data.get('amount')
     description = data.get('description')
+    item_count = data.get('item_count', 1)  # New field, default to 1 if not provided
 
     if recipient_username is None or amount is None or description is None:
         return jsonify({'error': 'Missing required fields'}), 400
@@ -30,11 +31,15 @@ def create_transaction():
 
     try:
         amount = Decimal(str(amount))
-    except InvalidOperation:
-        return jsonify({'error': 'Invalid amount format'}), 400
+        item_count = int(item_count)
+    except (InvalidOperation, ValueError):
+        return jsonify({'error': 'Invalid amount or item count format'}), 400
 
     if amount < Decimal('0.01'):
         return jsonify({'error': 'Amount must be at least $0.01'}), 400
+
+    if item_count < 1:
+        return jsonify({'error': 'Item count must be at least 1'}), 400
 
     if sender.balance < amount:
         return jsonify({'error': 'Insufficient funds'}), 400
@@ -44,7 +49,8 @@ def create_transaction():
             sender_id=sender.id,
             recipient_id=recipient.id,
             amount=amount,
-            description=description
+            description=description,
+            item_count=item_count  # New field
         )
         db.session.add(new_transaction)
 
@@ -61,7 +67,8 @@ def create_transaction():
             'recipient': recipient.username,
             'amount': float(new_transaction.amount),
             'description': new_transaction.description,
-            'timestamp': new_transaction.timestamp.isoformat() if new_transaction.timestamp else None
+            'timestamp': new_transaction.timestamp.isoformat() if new_transaction.timestamp else None,
+            'item_count': new_transaction.item_count
         }), 201
 
     except Exception as e:
@@ -89,7 +96,8 @@ def get_transaction_history():
                 'counterparty': User.query.get(t.recipient_id if t.sender_id == user.id else t.sender_id).username,
                 'amount': float(t.amount),
                 'description': t.description,
-                'timestamp': t.timestamp.isoformat() if t.timestamp else None
+                'timestamp': t.timestamp.isoformat() if t.timestamp else None,
+                'item_count': t.item_count
             } for t in transactions
         ]
     }), 200

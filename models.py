@@ -37,6 +37,7 @@ class Transaction(db.Model):
     amount = db.Column(db.Numeric(10, 2), nullable=False)
     description = db.Column(db.Text)
     timestamp = db.Column(db.DateTime, server_default=func.now())
+    item_count = db.Column(db.Integer, nullable=False, default=1)  # New field
 
     sender = db.relationship("User", foreign_keys=[sender_id], back_populates="sent_transactions")
     recipient = db.relationship("User", foreign_keys=[recipient_id], back_populates="received_transactions")
@@ -48,7 +49,8 @@ class Transaction(db.Model):
             'recipient_id': self.recipient_id,
             'amount': float(self.amount),
             'description': self.description,
-            'timestamp': self.timestamp.isoformat() if self.timestamp else None
+            'timestamp': self.timestamp.isoformat() if self.timestamp else None,
+            'item_count': self.item_count
         }
 
 class AdminActionLog(db.Model):
