@@ -14,11 +14,15 @@ def create_transaction():
     if error_message:
         return jsonify({'error': error_message}), status_code
 
+    # Reject all actions for admins
+    if sender.is_admin:
+        return jsonify({'error': 'Admin accounts are not allowed to perform transactions'}), 403
+
     data = request.json
     recipient_username = data.get('recipient_username')
     amount = data.get('amount')
     description = data.get('description')
-    item_count = data.get('item_count', 1)  # New field, default to 1 if not provided
+    item_count = data.get('item_count', 1)
 
     if recipient_username is None or amount is None or description is None:
         return jsonify({'error': 'Missing required fields'}), 400
@@ -26,6 +30,14 @@ def create_transaction():
     recipient = User.query.filter_by(username=recipient_username).first()
     if not recipient:
         return jsonify({'error': 'Recipient not found'}), 404
+
+    # Check if sender is a personal account (not business and not admin)
+    if sender.is_business:
+        return jsonify({'error': 'Business accounts can only receive money, not send'}), 403
+
+    # Check if recipient is a business account
+    if not recipient.is_business:
+        return jsonify({'error': 'Personal accounts can only send money to business accounts'}), 403
 
     if sender.username == recipient.username:
         return jsonify({'error': 'Cannot send money to yourself'}), 400
@@ -51,7 +63,7 @@ def create_transaction():
             recipient_id=recipient.id,
             amount=amount,
             description=description,
-            item_count=item_count  # New field
+            item_count=item_count
         )
         db.session.add(new_transaction)
 
