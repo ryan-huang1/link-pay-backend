@@ -4,6 +4,7 @@ from utils import get_user_from_token, hash_password
 from sqlalchemy.exc import IntegrityError
 from decimal import Decimal
 import traceback
+import re
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -168,3 +169,54 @@ def create_admin():
         db.session.rollback()
         current_app.logger.error(f"Error creating admin: {str(e)}")
         return jsonify({'error': 'An error occurred while creating the admin'}), 500
+    
+@admin_bp.route('/business/create', methods=['POST'])
+@admin_required
+def create_business_account(admin):
+    data = request.json
+    business_name = data.get('business_name')
+    password = data.get('password')
+    teacher = data.get('teacher')
+    class_period = data.get('class_period')
+    business_type = data.get('business_type')
+
+    if not all([business_name, password, teacher, class_period, business_type]):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    # Validate business name (no spaces, alphanumeric)
+    if not re.match(r'^[a-zA-Z0-9]+$', business_name):
+        return jsonify({'error': 'Business name must be alphanumeric with no spaces'}), 400
+
+    try:
+        new_business = User(
+            username=business_name,
+            password_hash=hash_password(password),
+            is_business=True,
+            balance=Decimal('0'),
+            teacher=teacher,
+            class_period=class_period,
+            business_type=business_type
+        )
+        db.session.add(new_business)
+        
+        log = AdminActionLog(
+            admin_id=admin.id,
+            action_type="BUSINESS_CREATE",
+            action_description=f"Created new business account {business_name}",
+            affected_user_id=new_business.id
+        )
+        db.session.add(log)
+        
+        db.session.commit()
+        return jsonify({
+            'message': 'Business account created successfully',
+            'business_id': new_business.id,
+            'business_name': new_business.username
+        }), 201
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'error': 'Business name already exists'}), 400
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error creating business account: {str(e)}")
+        return jsonify({'error': 'An error occurred while creating the business account'}), 500

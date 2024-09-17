@@ -1,6 +1,7 @@
 from database import db
 from sqlalchemy.sql import func
 from decimal import Decimal
+from sqlalchemy import CheckConstraint
 
 class User(db.Model):
     __tablename__ = 'Users'
@@ -9,9 +10,19 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     balance = db.Column(db.Numeric(10, 2), nullable=False, default=1000.00)
     is_admin = db.Column(db.Boolean, nullable=False, default=False)
-    is_deleted = db.Column(db.Boolean, nullable=False, default=False)  # New column
+    is_business = db.Column(db.Boolean, nullable=False, default=False)
+    is_deleted = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(db.DateTime, server_default=func.now())
     updated_at = db.Column(db.DateTime, server_default=func.now(), onupdate=func.now())
+
+    teacher = db.Column(db.String(100), nullable=True)
+    class_period = db.Column(db.String(50), nullable=True)
+    business_type = db.Column(db.String(100), nullable=True)
+
+    # Add a check constraint to ensure a user can't be both admin and business
+    __table_args__ = (
+        CheckConstraint('NOT (is_admin AND is_business)', name='check_admin_or_business'),
+    )
 
     sent_transactions = db.relationship("Transaction", foreign_keys="Transaction.sender_id", back_populates="sender")
     received_transactions = db.relationship("Transaction", foreign_keys="Transaction.recipient_id", back_populates="recipient")
@@ -24,10 +35,12 @@ class User(db.Model):
             'username': self.username,
             'balance': float(self.balance) if isinstance(self.balance, Decimal) else self.balance,
             'is_admin': self.is_admin,
+            'is_business': self.is_business,
             'is_deleted': self.is_deleted,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
+
 
 class Transaction(db.Model):
     __tablename__ = 'Transactions'
