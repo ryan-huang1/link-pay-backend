@@ -3,7 +3,8 @@ from models import db, User, Transaction
 from utils import get_user_from_token
 from sqlalchemy.exc import IntegrityError
 from decimal import Decimal, InvalidOperation
-import logging
+from sqlalchemy import or_, and_, case
+from sqlalchemy.orm import aliased
 
 transaction_bp = Blueprint('transaction', __name__)
 
@@ -82,8 +83,21 @@ def get_transaction_history():
     if error_message:
         return jsonify({'error': error_message}), status_code
 
-    transactions = Transaction.query.filter(
-        (Transaction.sender_id == user.id) | (Transaction.recipient_id == user.id)
+    # Create aliases for the User model
+    CounterpartyUser = aliased(User)
+
+    transactions = db.session.query(
+        Transaction,
+        case(
+            (Transaction.sender_id == user.id, CounterpartyUser.username),
+            else_=User.username
+        ).label('counterparty_name')
+    ).outerjoin(
+        User, User.id == Transaction.sender_id
+    ).outerjoin(
+        CounterpartyUser, CounterpartyUser.id == Transaction.recipient_id
+    ).filter(
+        or_(Transaction.sender_id == user.id, Transaction.recipient_id == user.id)
     ).order_by(Transaction.timestamp.desc()).all()
 
     current_app.logger.info(f"Fetched {len(transactions)} transactions for user {user.id}")
@@ -91,13 +105,13 @@ def get_transaction_history():
     return jsonify({
         'transactions': [
             {
-                'transaction_id': t.id,
-                'type': 'sent' if t.sender_id == user.id else 'received',
-                'counterparty': User.query.get(t.recipient_id if t.sender_id == user.id else t.sender_id).username,
-                'amount': float(t.amount),
-                'description': t.description,
-                'timestamp': t.timestamp.isoformat() if t.timestamp else None,
-                'item_count': t.item_count
+                'transaction_id': t.Transaction.id,
+                'type': 'sent' if t.Transaction.sender_id == user.id else 'received',
+                'counterparty': t.counterparty_name,
+                'amount': float(t.Transaction.amount),
+                'description': t.Transaction.description,
+                'timestamp': t.Transaction.timestamp.isoformat() if t.Transaction.timestamp else None,
+                'item_count': t.Transaction.item_count
             } for t in transactions
         ]
     }), 200
