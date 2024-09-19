@@ -4,6 +4,8 @@ from utils import get_user_from_token, hash_password
 from sqlalchemy.exc import IntegrityError
 from decimal import Decimal
 import traceback
+from sqlalchemy.orm import joinedload
+from sqlalchemy import desc
 import re
 
 admin_bp = Blueprint('admin', __name__)
@@ -109,17 +111,22 @@ def all_transaction_history(admin):
 @admin_bp.route('/action-logs', methods=['GET'])
 @admin_required
 def admin_action_logs(admin):
-    logs = AdminActionLog.query.all()
-    return jsonify({
-        'logs': [{
-            'id': log.id,
-            'admin_username': User.query.get(log.admin_id).username if log.admin_id else None,
-            'action_type': log.action_type,
-            'action_description': log.action_description,
-            'affected_username': User.query.get(log.affected_user_id).username if log.affected_user_id else None,
-            'timestamp': log.timestamp.isoformat() if log.timestamp else None
-        } for log in logs]
-    }), 200
+    logs = (AdminActionLog.query
+            .options(joinedload(AdminActionLog.admin),
+                     joinedload(AdminActionLog.affected_user))
+            .order_by(AdminActionLog.timestamp.desc())
+            .all())
+
+    logs_data = [{
+        'id': log.id,
+        'admin_username': log.admin.username if log.admin else None,
+        'action_type': log.action_type,
+        'action_description': log.action_description,
+        'affected_username': log.affected_user.username if log.affected_user else None,
+        'timestamp': log.timestamp.isoformat() if log.timestamp else None
+    } for log in logs]
+
+    return jsonify({'logs': logs_data}), 200
 
 @admin_bp.route('/admin/create', methods=['POST'])
 def create_admin():
