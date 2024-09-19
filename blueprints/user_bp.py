@@ -14,7 +14,8 @@ def get_user_profile():
         'user_id': user.id,
         'username': user.username,
         'balance': float(user.balance),
-        'is_admin': user.is_admin
+        'is_admin': user.is_admin,
+        'is_business': user.is_business 
     }), 200
 
 @user_bp.route('/usernames', methods=['GET'])
