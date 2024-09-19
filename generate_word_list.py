@@ -1,65 +1,96 @@
+import nltk
+from nltk.corpus import brown
+import random
+import sys
 import json
-from random_word import RandomWords
 from tqdm import tqdm
-import concurrent.futures
-import threading
+from collections import Counter
 
-# Shared set to store unique words across all threads
-word_set = set()
-word_set_lock = threading.Lock()
+def download_nltk_resources():
+    """
+    Downloads necessary NLTK resources if they are not already present.
+    """
+    required_corpora = ['brown', 'wordnet', 'punkt']
+    for corpus in required_corpora:
+        try:
+            nltk.data.find(f'corpora/{corpus}')
+        except LookupError:
+            print(f"Downloading NLTK '{corpus}' corpus...")
+            nltk.download(corpus)
 
-# Shared counter for progress tracking
-progress_counter = 0
-progress_lock = threading.Lock()
+def get_word_frequencies():
+    """
+    Retrieves word frequencies from the Brown corpus.
+    Returns a Counter object with word frequencies.
+    """
+    print("Building word frequency distribution from the Brown corpus...")
+    words = brown.words()
+    # Convert words to lowercase and filter out non-alphabetic words
+    words = [word.lower() for word in words if word.isalpha()]
+    frequency = Counter(words)
+    return frequency
 
-def generate_words(num_words, pbar):
-    r = RandomWords()
-    local_words = set()
-    global progress_counter
+def get_four_letter_common_words(frequency, min_frequency=5):
+    """
+    Extracts four-letter words from the frequency distribution.
+    Filters out words below a certain frequency threshold to ensure commonality.
+    """
+    print("Filtering four-letter common words...")
+    four_letter_words = [
+        word for word in frequency
+        if len(word) == 4 and frequency[word] >= min_frequency
+    ]
+    return four_letter_words
 
-    attempts = 0
-    max_attempts = num_words * 100
+def select_top_n_words(four_letter_words, frequency, target_count=10000):
+    """
+    Selects the top N four-letter words based on frequency.
+    If fewer than N words are available, returns all.
+    """
+    print(f"Selecting top {target_count} four-letter words based on frequency...")
+    # Sort words by frequency in descending order
+    sorted_words = sorted(
+        four_letter_words,
+        key=lambda w: frequency[w],
+        reverse=True
+    )
+    # Select up to target_count words
+    selected = sorted_words[:target_count]
+    if len(selected) < target_count:
+        print(f"Only {len(selected)} four-letter common words found.")
+    return selected
 
-    while len(local_words) < num_words and attempts < max_attempts:
-        word = r.get_random_word()
-        if word and 1 <= len(word) <= 5:  # Changed from 4 to 5
-            local_words.add(word.lower())
-            with progress_lock:
-                progress_counter += 1
-                pbar.update(1)
-        attempts += 1
-
-    # Add local words to shared set
-    with word_set_lock:
-        word_set.update(local_words)
-
-def generate_word_list(num_words=1000, num_threads=10):
-    words_per_thread = num_words // num_threads
-    extra_words = num_words % num_threads
-
-    print(f"Generating {num_words} unique words of 5 letters or less using {num_threads} threads...")
+def main():
+    """
+    Main function to execute the script steps:
+    1. Download NLTK resources.
+    2. Build word frequency distribution.
+    3. Filter four-letter common words.
+    4. Select top N words.
+    5. Save to JSON file.
+    """
+    download_nltk_resources()
+    frequency = get_word_frequencies()
+    four_letter_words = get_four_letter_common_words(frequency, min_frequency=5)
     
-    with tqdm(total=num_words, unit="word") as pbar:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
-            futures = []
-            for i in range(num_threads):
-                words_for_this_thread = words_per_thread + (1 if i < extra_words else 0)
-                futures.append(executor.submit(generate_words, words_for_this_thread, pbar))
-
-            # Wait for all threads to complete
-            concurrent.futures.wait(futures)
-
-    word_list = list(word_set)
-    print(f"\nGenerated {len(word_list)} unique words of 5 letters or less.")
+    if not four_letter_words:
+        print("No four-letter words found with the specified criteria.")
+        sys.exit(1)
     
-    if len(word_list) < num_words:
-        print(f"Warning: Could only generate {len(word_list)} unique words.")
+    selected_words = select_top_n_words(four_letter_words, frequency, target_count=10000)
     
-    with open('word_list.json', 'w') as f:
-        json.dump(word_list, f)
+    # Shuffle the selected words to add variety
+    random.shuffle(selected_words)
     
-    print("Word list saved to word_list.json")
-    print(f"First 10 words: {word_list[:10]}")
+    # Write the words to a JSON file
+    output_file = "word_list.json"
+    try:
+        with open(output_file, 'w') as f:
+            json.dump(selected_words, f, indent=4)
+        print(f"{len(selected_words)} four-letter common words have been written to '{output_file}'.")
+    except IOError as e:
+        print(f"An error occurred while writing to the file: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    generate_word_list(num_words=1000, num_threads=10)
+    main()
