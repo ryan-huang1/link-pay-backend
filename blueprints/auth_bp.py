@@ -48,16 +48,16 @@ def generate_unique_codes(num_codes, existing_codes):
         if new_code not in existing_codes and new_code not in codes:
             codes.add(new_code)
         attempts += 1
-    
+
     if len(codes) < num_codes:
         logger.warning(f"Could only generate {len(codes)} unique codes out of {num_codes} requested.")
-    
+
     return list(codes)
 
 @auth_bp.route('/generate-registration-code', methods=['POST'])
 def generate_registration_code():
     start_time = time.time()
-    
+
     admin_user, error_message, status_code = get_user_from_token()
     if error_message:
         return jsonify({'error': error_message}), status_code
@@ -90,6 +90,11 @@ def generate_registration_code():
         generated_codes = generate_unique_codes(num_codes, existing_codes)
         generation_time = time.time() - generation_start
         logger.info(f"Time for code generation: {generation_time:.4f} seconds")
+
+        # Ensure "mister-link-sucks" is not generated as a regular code
+        if "mister-link-sucks" in generated_codes:
+            generated_codes.remove("mister-link-sucks")
+            logger.info('"mister-link-sucks" removed from generated codes to prevent duplication.')
 
         # Bulk insert
         insert_start = time.time()
@@ -128,7 +133,7 @@ def generate_registration_code():
         db.session.rollback()
         logger.error(f"Error generating registration code: {str(e)}", exc_info=True)
         return jsonify({'error': 'An error occurred while generating the registration code(s)'}), 500
-    
+
 @auth_bp.route('/get-valid-codes', methods=['GET'])
 def get_valid_codes():
     admin_user, error_message, status_code = get_user_from_token()
@@ -139,7 +144,7 @@ def get_valid_codes():
         return jsonify({'error': 'Access denied. Admin privileges required.'}), 403
 
     valid_codes = RegistrationCode.query.filter_by(is_used=False).all()
-    
+
     codes_list = [
         {
             'id': code.id,
@@ -173,28 +178,28 @@ def delete_all_codes():
     try:
         # Count the number of codes before deletion
         code_count = RegistrationCode.query.count()
-        
-        # Delete all registration codes
-        RegistrationCode.query.delete()
-        
+
+        # Delete all registration codes except "mister-link-sucks" if it exists
+        RegistrationCode.query.filter(RegistrationCode.code != "mister-link-sucks").delete()
+
         db.session.commit()
 
         log_admin_action(
             admin_id=admin_user.id,
             action_type="DELETE_ALL_REGISTRATION_CODES",
-            action_description=f"Admin {admin_user.username} deleted all registration codes",
+            action_description=f"Admin {admin_user.username} deleted all registration codes except 'mister-link-sucks'",
             affected_user_id=None
         )
 
         return jsonify({
-            'message': f'Successfully deleted all registration codes',
-            'deleted_count': code_count
+            'message': f"Successfully deleted {code_count - RegistrationCode.query.filter_by(code='mister-link-sucks').count()} registration code(s)",
+            'deleted_count': code_count - RegistrationCode.query.filter_by(code='mister-link-sucks').count()
         }), 200
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error deleting registration codes: {str(e)}")
         return jsonify({'error': 'An error occurred while deleting registration codes'}), 500
-    
+
 @auth_bp.route('/register', methods=['POST'])
 def register():
     data = request.json
@@ -212,48 +217,84 @@ def register():
         else:
             return jsonify({'error': 'Username already exists'}), 400
 
-    # Check if the registration code is valid
-    code = RegistrationCode.query.filter_by(code=registration_code, is_used=False).first()
-    if not code:
-        return jsonify({'error': 'Invalid or already used registration code'}), 400
+    if registration_code == "mister-link-sucks":
+        # Special case: Always valid, does not expire
+        try:
+            new_user = User(
+                username=username,
+                password_hash=hash_password(password),
+                balance=1000.0,  # Initial balance
+                is_admin=False
+            )
+            db.session.add(new_user)
 
-    try:
-        new_user = User(
-            username=username,
-            password_hash=hash_password(password),
-            balance=1000.0,  # Initial balance
-            is_admin=False
-        )
-        db.session.add(new_user)
+            db.session.commit()
 
-        # Mark the registration code as used
-        code.is_used = True
-        code.used_by = new_user.id
+            # Generate JWT token for the new user
+            token = generate_jwt_token(new_user.id, new_user.is_admin)
 
-        db.session.commit()
-        
-        # Generate JWT token for the new user
-        token = generate_jwt_token(new_user.id, new_user.is_admin)
-        
-        # Log the user registration action
-        log_admin_action(
-            admin_id=None,  # No admin for self-registration
-            action_type="USER_REGISTRATION",
-            action_description=f"New user registered: {username}",
-            affected_user_id=new_user.id
-        )
-        
-        return jsonify({
-            'message': 'User registered successfully',
-            'user_id': new_user.id,
-            'token': token,
-            'is_admin': new_user.is_admin
-        }), 201
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error registering user: {str(e)}")
-        return jsonify({'error': 'An error occurred while registering the user'}), 500
-    
+            # Log the user registration action
+            log_admin_action(
+                admin_id=None,  # No admin for self-registration
+                action_type="USER_REGISTRATION",
+                action_description=f"New user registered with special code: {username}",
+                affected_user_id=new_user.id
+            )
+
+            return jsonify({
+                'message': 'User registered successfully with special registration code',
+                'user_id': new_user.id,
+                'token': token,
+                'is_admin': new_user.is_admin
+            }), 201
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error registering user with special code: {str(e)}")
+            return jsonify({'error': 'An error occurred while registering the user'}), 500
+    else:
+        # Regular registration code validation
+        # Check if the registration code is valid
+        code = RegistrationCode.query.filter_by(code=registration_code, is_used=False).first()
+        if not code:
+            return jsonify({'error': 'Invalid or already used registration code'}), 400
+
+        try:
+            new_user = User(
+                username=username,
+                password_hash=hash_password(password),
+                balance=1000.0,  # Initial balance
+                is_admin=False
+            )
+            db.session.add(new_user)
+
+            # Mark the registration code as used
+            code.is_used = True
+            code.used_by = new_user.id
+
+            db.session.commit()
+
+            # Generate JWT token for the new user
+            token = generate_jwt_token(new_user.id, new_user.is_admin)
+
+            # Log the user registration action
+            log_admin_action(
+                admin_id=None,  # No admin for self-registration
+                action_type="USER_REGISTRATION",
+                action_description=f"New user registered: {username}",
+                affected_user_id=new_user.id
+            )
+
+            return jsonify({
+                'message': 'User registered successfully',
+                'user_id': new_user.id,
+                'token': token,
+                'is_admin': new_user.is_admin
+            }), 201
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error registering user: {str(e)}")
+            return jsonify({'error': 'An error occurred while registering the user'}), 500
+
 @auth_bp.route('/login', methods=['POST'])
 def login():
     data = request.json
@@ -277,14 +318,14 @@ def login():
 
         if verify_password(user.password_hash, password):
             token = generate_jwt_token(user.id, user.is_admin)
-            
+
             log_admin_action(
                 admin_id=None,
                 action_type="USER_LOGIN",
                 action_description=f"User logged in: {username}",
                 affected_user_id=user.id
             )
-            
+
             return jsonify({
                 'token': token,
                 'user_id': user.id,
