@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from decimal import Decimal
 import traceback
 from sqlalchemy.orm import joinedload
-from sqlalchemy import desc
+from sqlalchemy import func
 import re
 
 admin_bp = Blueprint('admin', __name__)
@@ -86,10 +86,30 @@ def admin_user_delete(admin, username):
 @admin_bp.route('/users', methods=['GET'])
 @admin_required
 def admin_user_list(admin):
-    users = User.query.all()
-    return jsonify({
-        'users': [user.to_dict() for user in users]
-    }), 200
+    users = User.query.filter_by(is_business=False, is_admin=False, is_deleted=False).all()
+    
+    user_data = []
+    for user in users:
+        transaction_count = (len(user.sent_transactions) + len(user.received_transactions))
+        user_dict = user.to_dict()
+        user_dict['transaction_count'] = transaction_count
+        user_data.append(user_dict)
+
+    return jsonify({'users': user_data}), 200
+
+@admin_bp.route('/businesses', methods=['GET'])
+@admin_required
+def admin_business_list(admin):
+    businesses = User.query.filter_by(is_business=True, is_deleted=False).all()
+    
+    business_data = []
+    for business in businesses:
+        transaction_count = (len(business.sent_transactions) + len(business.received_transactions))
+        business_dict = business.to_dict()
+        business_dict['transaction_count'] = transaction_count
+        business_data.append(business_dict)
+
+    return jsonify({'businesses': business_data}), 200
 
 @admin_bp.route('/transactions/all', methods=['GET'])
 @admin_required
