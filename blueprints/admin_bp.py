@@ -170,18 +170,28 @@ def all_transaction_history(admin):
 @admin_bp.route('/action-logs', methods=['GET'])
 @admin_required
 def admin_action_logs(admin):
-    logs = (AdminActionLog.query
-            .options(joinedload(AdminActionLog.admin),
-                     joinedload(AdminActionLog.affected_user))
-            .order_by(AdminActionLog.timestamp.desc())
-            .all())
+    admin_alias = aliased(User, name='admin')
+    affected_user_alias = aliased(User, name='affected_user')
+
+    logs = db.session.query(
+        AdminActionLog.id,
+        AdminActionLog.action_type,
+        AdminActionLog.action_description,
+        AdminActionLog.timestamp,
+        admin_alias.username.label('admin_username'),
+        affected_user_alias.username.label('affected_username')
+    ).outerjoin(
+        admin_alias, AdminActionLog.admin_id == admin_alias.id
+    ).outerjoin(
+        affected_user_alias, AdminActionLog.affected_user_id == affected_user_alias.id
+    ).order_by(AdminActionLog.timestamp.desc()).all()
 
     logs_data = [{
         'id': log.id,
-        'admin_username': log.admin.username if log.admin else None,
+        'admin_username': log.admin_username or "System",
         'action_type': log.action_type,
         'action_description': log.action_description,
-        'affected_username': log.affected_user.username if log.affected_user else None,
+        'affected_username': log.affected_username or "Unknown User",
         'timestamp': log.timestamp.isoformat() if log.timestamp else None
     } for log in logs]
 
