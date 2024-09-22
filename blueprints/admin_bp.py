@@ -138,13 +138,28 @@ def admin_business_list(admin):
 @admin_bp.route('/transactions/all', methods=['GET'])
 @admin_required
 def all_transaction_history(admin):
-    transactions = Transaction.query.all()
+    sender_alias = aliased(User, name='sender')
+    recipient_alias = aliased(User, name='recipient')
+
+    transactions = db.session.query(
+        Transaction.id,
+        Transaction.amount,
+        Transaction.description,
+        Transaction.timestamp,
+        sender_alias.username.label('sender_username'),
+        recipient_alias.username.label('recipient_username')
+    ).join(
+        sender_alias, Transaction.sender_id == sender_alias.id
+    ).join(
+        recipient_alias, Transaction.recipient_id == recipient_alias.id
+    ).order_by(Transaction.timestamp.desc()).all()
+
     return jsonify({
         'transactions': [
             {
                 'transaction_id': t.id,
-                'sender': User.query.get(t.sender_id).username if User.query.get(t.sender_id) else "Deleted User",
-                'recipient': User.query.get(t.recipient_id).username if User.query.get(t.recipient_id) else "Deleted User",
+                'sender': t.sender_username or "Deleted User",
+                'recipient': t.recipient_username or "Deleted User",
                 'amount': float(t.amount),
                 'description': t.description,
                 'timestamp': t.timestamp.isoformat() if t.timestamp else None
