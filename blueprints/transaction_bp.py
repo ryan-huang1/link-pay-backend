@@ -99,7 +99,12 @@ def get_transaction_history():
     CounterpartyUser = aliased(User)
 
     transactions = db.session.query(
-        Transaction,
+        Transaction.id,
+        Transaction.amount,
+        Transaction.description,
+        Transaction.timestamp,
+        Transaction.item_count,
+        Transaction.sender_id,
         case(
             (Transaction.sender_id == user.id, CounterpartyUser.username),
             else_=User.username
@@ -117,13 +122,13 @@ def get_transaction_history():
     return jsonify({
         'transactions': [
             {
-                'transaction_id': t.Transaction.id,
-                'type': 'sent' if t.Transaction.sender_id == user.id else 'received',
+                'transaction_id': t.id,
+                'type': 'sent' if t.sender_id == user.id else 'received',
                 'counterparty': t.counterparty_name,
-                'amount': float(t.Transaction.amount),
-                'description': t.Transaction.description,
-                'timestamp': t.Transaction.timestamp.isoformat() if t.Transaction.timestamp else None,
-                'item_count': t.Transaction.item_count
+                'amount': float(t.amount),
+                'description': t.description,
+                'timestamp': t.timestamp.isoformat() if t.timestamp else None,
+                'item_count': t.item_count
             } for t in transactions
         ]
     }), 200
