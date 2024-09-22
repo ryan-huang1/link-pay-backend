@@ -300,23 +300,22 @@ def create_business_account(admin):
 @admin_bp.route('/stats', methods=['GET'])
 @admin_required
 def admin_stats(admin):
-    # Query for user counts
-    user_counts = db.session.query(
+    stats = db.session.query(
         func.sum(case([(User.is_business == True, 1)], else_=0)).label('business_count'),
-        func.sum(case([(User.is_business == False, 1)], else_=0)).label('user_count')
-    ).filter(User.is_deleted == False, User.is_admin == False).first()
-
-    # Query for transaction stats
-    transaction_stats = db.session.query(
+        func.sum(case([(User.is_business == False, 1)], else_=0)).label('user_count'),
         func.count(Transaction.id).label('transaction_count'),
         func.avg(Transaction.amount).label('average_transaction_size')
+    ).select_from(User).outerjoin(
+        Transaction, 
+        (Transaction.sender_id == User.id) | (Transaction.recipient_id == User.id)
+    ).filter(
+        User.is_deleted == False, 
+        User.is_admin == False
     ).first()
 
-    stats = {
-        'business_count': int(user_counts.business_count),
-        'user_count': int(user_counts.user_count),
-        'transaction_count': int(transaction_stats.transaction_count),
-        'average_transaction_size': float(transaction_stats.average_transaction_size) if transaction_stats.average_transaction_size else 0
-    }
-
-    return jsonify(stats), 200
+    return jsonify({
+        'business_count': int(stats.business_count or 0),
+        'user_count': int(stats.user_count or 0),
+        'transaction_count': int(stats.transaction_count or 0),
+        'average_transaction_size': float(stats.average_transaction_size or 0)
+    }), 200
