@@ -6,6 +6,7 @@ from decimal import Decimal
 import traceback
 from sqlalchemy.orm import joinedload
 from sqlalchemy import func
+from sqlalchemy.orm import aliased
 import re
 
 admin_bp = Blueprint('admin', __name__)
@@ -86,28 +87,51 @@ def admin_user_delete(admin, username):
 @admin_bp.route('/users', methods=['GET'])
 @admin_required
 def admin_user_list(admin):
-    users = User.query.filter_by(is_business=False, is_admin=False, is_deleted=False).all()
-    
-    user_data = []
-    for user in users:
-        transaction_count = (len(user.sent_transactions) + len(user.received_transactions))
-        user_dict = user.to_dict()
-        user_dict['transaction_count'] = transaction_count
-        user_data.append(user_dict)
+    sent_alias = aliased(Transaction, name='sent')
+    received_alias = aliased(Transaction, name='received')
+
+    users = db.session.query(
+        User,
+        func.count(sent_alias.id) + func.count(received_alias.id)
+    ).outerjoin(
+        sent_alias, User.sent_transactions
+    ).outerjoin(
+        received_alias, User.received_transactions
+    ).filter(
+        User.is_business == False,
+        User.is_admin == False,
+        User.is_deleted == False
+    ).group_by(User.id).all()
+
+    user_data = [{
+        **user.to_dict(),
+        'transaction_count': transaction_count
+    } for user, transaction_count in users]
 
     return jsonify({'users': user_data}), 200
 
 @admin_bp.route('/businesses', methods=['GET'])
 @admin_required
 def admin_business_list(admin):
-    businesses = User.query.filter_by(is_business=True, is_deleted=False).all()
-    
-    business_data = []
-    for business in businesses:
-        transaction_count = (len(business.sent_transactions) + len(business.received_transactions))
-        business_dict = business.to_dict()
-        business_dict['transaction_count'] = transaction_count
-        business_data.append(business_dict)
+    sent_alias = aliased(Transaction, name='sent')
+    received_alias = aliased(Transaction, name='received')
+
+    businesses = db.session.query(
+        User,
+        func.count(sent_alias.id) + func.count(received_alias.id)
+    ).outerjoin(
+        sent_alias, User.sent_transactions
+    ).outerjoin(
+        received_alias, User.received_transactions
+    ).filter(
+        User.is_business == True,
+        User.is_deleted == False
+    ).group_by(User.id).all()
+
+    business_data = [{
+        **business.to_dict(),
+        'transaction_count': transaction_count
+    } for business, transaction_count in businesses]
 
     return jsonify({'businesses': business_data}), 200
 
