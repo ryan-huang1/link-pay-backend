@@ -87,21 +87,30 @@ def admin_user_delete(admin, username):
 @admin_bp.route('/users', methods=['GET'])
 @admin_required
 def admin_user_list(admin):
-    sent_alias = aliased(Transaction, name='sent')
-    received_alias = aliased(Transaction, name='received')
+    # Subquery to count sent transactions per user
+    sent_counts = db.session.query(
+        Transaction.sender_id.label('user_id'),
+        func.count(Transaction.id).label('sent_count')
+    ).group_by(Transaction.sender_id).subquery()
+
+    # Subquery to count received transactions per user
+    received_counts = db.session.query(
+        Transaction.recipient_id.label('user_id'),
+        func.count(Transaction.id).label('received_count')
+    ).group_by(Transaction.recipient_id).subquery()
 
     users = db.session.query(
         User,
-        func.count(sent_alias.id) + func.count(received_alias.id)
+        (func.coalesce(sent_counts.c.sent_count, 0) + func.coalesce(received_counts.c.received_count, 0)).label('transaction_count')
     ).outerjoin(
-        sent_alias, User.sent_transactions
+        sent_counts, User.id == sent_counts.c.user_id
     ).outerjoin(
-        received_alias, User.received_transactions
+        received_counts, User.id == received_counts.c.user_id
     ).filter(
         User.is_business == False,
         User.is_admin == False,
         User.is_deleted == False
-    ).group_by(User.id).all()
+    ).all()
 
     user_data = [{
         **user.to_dict(),
@@ -113,20 +122,29 @@ def admin_user_list(admin):
 @admin_bp.route('/businesses', methods=['GET'])
 @admin_required
 def admin_business_list(admin):
-    sent_alias = aliased(Transaction, name='sent')
-    received_alias = aliased(Transaction, name='received')
+    # Subquery to count sent transactions per business
+    sent_counts = db.session.query(
+        Transaction.sender_id.label('user_id'),
+        func.count(Transaction.id).label('sent_count')
+    ).group_by(Transaction.sender_id).subquery()
+
+    # Subquery to count received transactions per business
+    received_counts = db.session.query(
+        Transaction.recipient_id.label('user_id'),
+        func.count(Transaction.id).label('received_count')
+    ).group_by(Transaction.recipient_id).subquery()
 
     businesses = db.session.query(
         User,
-        func.count(sent_alias.id) + func.count(received_alias.id)
+        (func.coalesce(sent_counts.c.sent_count, 0) + func.coalesce(received_counts.c.received_count, 0)).label('transaction_count')
     ).outerjoin(
-        sent_alias, User.sent_transactions
+        sent_counts, User.id == sent_counts.c.user_id
     ).outerjoin(
-        received_alias, User.received_transactions
+        received_counts, User.id == received_counts.c.user_id
     ).filter(
         User.is_business == True,
         User.is_deleted == False
-    ).group_by(User.id).all()
+    ).all()
 
     business_data = [{
         **business.to_dict(),
